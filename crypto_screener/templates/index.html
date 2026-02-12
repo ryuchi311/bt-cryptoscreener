@@ -106,6 +106,15 @@
             <div id="presetsContainer"></div>
          </div>
 
+        <!-- Live indicator (realtime status shown before signals) -->
+        <div class="flex items-center gap-3 px-4 py-2">
+            <div id="liveStatus" class="flex items-center gap-2">
+                <span id="headerDot" class="w-3 h-3 rounded-full bg-error inline-block"></span>
+                <span id="headerPulse" class="w-3 h-3 rounded-full bg-error inline-block animate-ping hidden"></span>
+                <span class="font-medium text-sm" id="liveText">Connecting...</span>
+                <span id="livePrice" class="font-mono text-sm opacity-80 ml-3">-</span>
+            </div>
+        </div>
         <!-- Main Table -->
         <div class="card bg-base-100 shadow-xl overflow-hidden">
             <div class="overflow-x-auto">
@@ -161,12 +170,15 @@
         const headerPulse = document.getElementById("headerPulse");
         const headerDot = document.getElementById("headerDot");
         const connStatusText = document.getElementById("connStatusText");
+        const liveText = document.getElementById("liveText");
         const filterInput = document.getElementById("filterInput");
         const filterInputMobile = document.getElementById("filterInputMobile");
         const rowCountEl = document.getElementById("rowCount");
+        const livePriceEl = document.getElementById("livePrice");
         
         let currentTf = "1h";
         let latestData = [];
+        let lastLivePrice = null;
         let sortCol = 'rsi'; 
         let sortAsc = false; 
 
@@ -363,18 +375,58 @@
         // Socket
         socket.on('connect', () => {
             if(connStatusText) connStatusText.textContent = 'Live';
+            if(liveText) liveText.textContent = 'Live';
             if(headerDot) headerDot.classList.replace('bg-error','bg-success');
             if(headerPulse) headerPulse.classList.remove('hidden');
+            // briefly show pulse to indicate connection
+            if(headerPulse) setTimeout(() => headerPulse.classList.add('hidden'), 1000);
+            // if we already have cached/latest data, update price immediately
+            if(latestData && latestData.length) updateLivePriceFromData(latestData);
         });
         socket.on('disconnect', () => {
             if(connStatusText) connStatusText.textContent = 'Disconnected';
+            if(liveText) liveText.textContent = 'Disconnected';
             if(headerDot) headerDot.classList.replace('bg-success','bg-error');
             if(headerPulse) headerPulse.classList.add('hidden');
         });
         socket.on('update', d => {
             latestData = d || [];
             filterAndRender();
+            if(liveText) {
+                liveText.textContent = 'Live — ' + new Date().toLocaleTimeString();
+            }
+            if(headerPulse) {
+                headerPulse.classList.remove('hidden');
+                setTimeout(() => headerPulse.classList.add('hidden'), 700);
+            }
+            updateLivePriceFromData(latestData);
         });
+
+        function updateLivePriceFromData(arr) {
+            if(!arr || !arr.length) return;
+            // Prefer BTC/USDT price if present, otherwise take first row with a price
+            let row = arr.find(r => r.symbol && r.symbol.toUpperCase().startsWith('BTC')) || arr.find(r => typeof r.price !== 'undefined');
+            if(!row || row.price == null) return;
+            const p = parseFloat(row.price);
+            if(isNaN(p)) return;
+            const fmt = p.toLocaleString(undefined, { minimumFractionDigits: p<1?6:2 });
+            if(livePriceEl) {
+                // color flash depending on change
+                if(lastLivePrice != null) {
+                    if(p > lastLivePrice) livePriceEl.classList.add('text-success');
+                    else if(p < lastLivePrice) livePriceEl.classList.add('text-error');
+                }
+                livePriceEl.textContent = fmt;
+                // remove highlight after short delay
+                setTimeout(() => {
+                    if(livePriceEl) {
+                        livePriceEl.classList.remove('text-success');
+                        livePriceEl.classList.remove('text-error');
+                    }
+                }, 700);
+            }
+            lastLivePrice = p;
+        }
         socket.on('timeframe', setTf);
     </script>
 </body>

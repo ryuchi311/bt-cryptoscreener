@@ -50,6 +50,16 @@ def connect():
     print("Client connected")
     # Send current timeframe to the newly connected client
     socketio.emit("timeframe", current_timeframe)
+    try:
+        # send an immediate data update so clients see results without waiting
+        data = run_screener(current_timeframe)
+        max_rows = 200
+        filtered = [r for r in data if r.get('status') in ('Overbought', 'Oversold')]
+        emit_data = filtered[:max_rows]
+        print(f"Sending immediate {len(emit_data)} rows to new client")
+        socketio.emit("update", emit_data)
+    except Exception as exc:
+        print(f"Error sending immediate update: {exc}")
 
 
 @socketio.on("set_timeframe")
