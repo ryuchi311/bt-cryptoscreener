@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Crypto Screener</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .gradient-text {
+            background: linear-gradient(to right, #34d399, #3b82f6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #111827; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+    </style>
+</head>
+<body class="bg-black text-gray-200 min-h-screen selection:bg-emerald-500/30">
+    <!-- Debug overlay to show JS/socket status -->
+    <div id="debugOverlay" style="position:fixed;top:12px;right:12px;background:#111827;color:#a3e635;padding:6px 10px;border-radius:8px;font-size:13px;z-index:60;box-shadow:0 6px 18px rgba(0,0,0,0.6);">
+        JS: initializing • Socket: —
+    </div>
+    <!-- Ambient Background Gradients -->
+    <div class="fixed inset-0 z-[-1] overflow-hidden pointer-events-none">
+        <div class="absolute top-0 left-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl"></div>
+        <div class="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl"></div>
+    </div>
+
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <!-- Header -->
+        <header class="mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+            <div class="space-y-2">
+                <div class="flex items-center gap-3 mb-1">
+                    <span class="relative flex h-3 w-3">
+                      <span id="headerPulse" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span id="headerDot" class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                    </span>
+                    <span class="text-xs font-semibold tracking-wider text-emerald-400 uppercase">Live Market Data</span>
+                </div>
+                <h1 class="text-4xl md:text-5xl font-bold text-white tracking-tight">
+                    Crypto<span class="gradient-text">Screener</span> <span class="text-lg font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/30">MEXC PERP</span>
+                </h1>
+                <p class="text-gray-400 text-sm md:text-base max-w-md">Real-time RSI & Stochastic analysis for USDT perpetual pairs from <span class="text-emerald-400 font-semibold">MEXC PERP</span>.</p>
+            </div>
+
+            <div class="flex flex-col items-end gap-4">
+                 <!-- Sponsor logos -->
+                 <div class="flex items-center gap-4 bg-gray-900/50 p-2 rounded-xl border border-white/5 backdrop-blur-sm">
+                    <span class="text-xs text-gray-500 font-medium px-2 border-r border-gray-700">Powered by</span>
+                    <a href="#" class="opacity-80 hover:opacity-100 transition-opacity">
+                        <img src="{{ url_for('static', filename='ULTM8X Digitraders.jpg') }}" alt="ULTM8X" class="h-8 w-auto object-contain rounded-md ring-1 ring-white/10"/>
+                    </a>
+                    <a href="#" class="opacity-80 hover:opacity-100 transition-opacity">
+                        <img src="{{ url_for('static', filename='Brgy Tamago.jpg') }}" alt="Brgy Tamago" class="h-8 w-auto object-contain rounded-md ring-1 ring-white/10"/>
+                    </a>
+                </div>
+
+                <!-- Controls -->
+                    <div class="flex items-center gap-3">
+                    <input type="text" id="filterInput" placeholder="Filter..." class="bg-gray-900/80 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-emerald-500/50 transition-colors w-32 shadow-sm">
+                    <button id="apiFetchBtn" onclick="openApiFetch()" class="ml-2 bg-emerald-500 hover:bg-emerald-600 text-black text-sm font-semibold px-3 py-1.5 rounded-lg">Fetch RSI</button>
+                    <div class="flex items-center gap-3 bg-gray-900/80 p-1.5 rounded-lg border border-gray-700">
+                    <div class="px-3 py-1.5 text-xs text-gray-400 font-medium uppercase tracking-wide">Timeframe</div>
+                    <div class="flex bg-gray-800 rounded-md p-0.5">
+                        <button class="tf-btn px-4 py-1.5 text-sm font-medium rounded-md transition-all text-gray-400 hover:text-white" data-tf="30m" onclick="setTf('30m')">30m</button>
+                        <button class="tf-btn px-4 py-1.5 text-sm font-medium rounded-md transition-all text-white bg-gray-700 shadow-sm" data-tf="1h" onclick="setTf('1h')">1h</button>
+                        <button class="tf-btn px-4 py-1.5 text-sm font-medium rounded-md transition-all text-gray-400 hover:text-white" data-tf="4h" onclick="setTf('4h')">4h</button>
+                    </div>
+                </div>
+                <!-- Preset Symbols -->
+                <div class="w-full mt-2 flex items-center gap-2">
+                    <div id="presetsContainer" class="flex gap-2"></div>
+                    <input id="presetInput" type="text" placeholder="Add preset (comma-separated)" class="ml-2 bg-gray-900/80 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-emerald-500/50 transition-colors w-56">
+                    <button onclick="addPresetFromInput()" class="ml-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-3 py-1.5 rounded-lg">Add</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main>
+            <div class="glass-panel rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/10">
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="border-b border-gray-800 bg-gray-900/40 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                                <th class="p-5 pl-8 cursor-pointer hover:text-white select-none group" onclick="handleSort('symbol')">
+                                    Symbol <span class="sort-icon invisible group-hover:visible ml-1">↕</span>
+                                </th>
+                                <th class="p-5 cursor-pointer hover:text-white select-none group" onclick="handleSort('price')">
+                                    Price (USDT) <span class="sort-icon invisible group-hover:visible ml-1">↕</span>
+                                </th>
+                                <th class="p-5 cursor-pointer hover:text-white select-none group" onclick="handleSort('change_pct')">
+                                    24h Change <span class="sort-icon invisible group-hover:visible ml-1">↕</span>
+                                </th>
+                                <th class="p-5 cursor-pointer hover:text-white select-none group" onclick="handleSort('volume_usdt')">
+                                    Volume (USDT) <span class="sort-icon invisible group-hover:visible ml-1">↕</span>
+                                </th>
+                                <th class="p-5 cursor-pointer hover:text-white select-none group" onclick="handleSort('rsi')">
+                                    RSI (14) <span class="sort-icon invisible group-hover:visible ml-1">↕</span>
+                                </th>
+                                <th class="p-5 cursor-pointer hover:text-white select-none group" onclick="handleSort('status')">
+                                    Signal <span class="sort-icon invisible group-hover:visible ml-1">↕</span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="screenerTable" class="divide-y divide-gray-800 text-sm">
+                            <!-- Rows injected via JS -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Footer / Status Bar -->
+                <div class="bg-gray-900/60 border-t border-gray-800 p-4 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-gray-500">
+                    <div class="flex items-center gap-2">
+                        <span id="connStatusDot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        <span id="connStatusText">Connected to stream</span>
+                    </div>
+                    <div class="font-mono opacity-70">
+                        Last Update: <span id="lastUpdate" class="text-gray-300">Syncing...</span> · Rows: <span id="rowCount">0</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 bg-gray-800 border border-emerald-500/30 text-emerald-400 rounded-xl shadow-2xl translate-y-20 opacity-0 transition-all duration-300">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+        <span class="font-medium text-sm">Data Updated</span>
+    </div>
+
+<script>
+    const socket = io({ transports: ['polling'] });
+    const tableBody = document.getElementById("screenerTable");
+    const lastUpdateEl = document.getElementById("lastUpdate");
+    const headerPulse = document.getElementById("headerPulse");
+    const headerDot = document.getElementById("headerDot");
+    const connStatusText = document.getElementById("connStatusText");
+    const connStatusDot = document.getElementById("connStatusDot");
+    const filterInput = document.getElementById("filterInput");
+    const rowCountEl = document.getElementById("rowCount");
+    // Symbol presets UI
+    const symbolPresets = ['BTC/USDT','ETH/USDT','SOL/USDT','BNB/USDT','XRP/USDT'];
+    const presetsContainer = document.getElementById('presetsContainer');
+    function renderPresets() {
+        if (!presetsContainer) return;
+        presetsContainer.innerHTML = '';
+        symbolPresets.forEach(p => {
+            const b = document.createElement('button');
+            b.className = 'text-xs px-3 py-1 rounded-md bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700';
+            b.textContent = p.replace(/\//g, ' ');
+            b.onclick = () => fetchTickers(p);
+            presetsContainer.appendChild(b);
+        });
+    }
+    function addPresetFromInput() {
+        const inp = document.getElementById('presetInput');
+        if (!inp) return;
+        const v = inp.value.trim();
+        if (!v) return;
+        const parts = v.split(',').map(s => s.trim()).filter(Boolean);
+        const joined = parts.join(',');
+        if (!symbolPresets.includes(joined)) {
+            symbolPresets.unshift(joined);
+            if (symbolPresets.length > 12) symbolPresets.pop();
+        }
+        inp.value = '';
+        renderPresets();
+    }
+    
+    let currentTf = "1h";
+    let latestData = [];
+    
+    // Sorting state
+    let sortCol = 'rsi'; // default sort by RSI
+    let sortAsc = false; // default descending
+
+    // Filter Logic
+    filterInput.addEventListener('input', () => {
+        filterAndRender();
+    });
+
+    function handleSort(col) {
+        if (sortCol === col) {
+            sortAsc = !sortAsc;
+        } else {
+            sortCol = col;
+            sortAsc = true; // default asc for new column, or logic dependent
+            // usually prices/rsi/changes/volume are interesting descending (highest first)
+            if (['price', 'change_pct', 'volume_usdt', 'rsi', 'stoch'].includes(col)) {
+                sortAsc = false;
+            }
+        }
+        updateSortIcons();
+        filterAndRender();
+    }
+
+    function updateSortIcons() {
+        // Reset all icons
+        document.querySelectorAll('.sort-icon').forEach(el => {
+            el.textContent = '↕';
+            el.classList.add('invisible');
+            el.parentElement.classList.remove('text-white'); // removing active highlight
+        });
+        
+        // Find active header
+        const headers = document.querySelectorAll('th[onclick^="handleSort"]');
+        const map = ['symbol', 'price', 'change_pct', 'volume_usdt', 'rsi', 'status'];
+        const idx = map.indexOf(sortCol);
+        
+        if (idx !== -1 && headers[idx]) {
+            const icon = headers[idx].querySelector('.sort-icon');
+            if (icon) {
+                icon.textContent = sortAsc ? '↑' : '↓';
+                icon.classList.remove('invisible');
+                headers[idx].classList.add('text-white');
+            }
+        }
+    }
+
+    function filterAndRender() {
+        if (!latestData) return;
+        const term = filterInput.value.trim().toUpperCase();
+        let displayData = [...latestData]; // shallow copy
+        
+        // 1. Filter by search term
+        if (term) {
+            displayData = displayData.filter(item => item.symbol && item.symbol.toUpperCase().includes(term));
+        }
+
+        // 2. Keep only signals (Overbought/Oversold)
+        displayData = displayData.filter(item => {
+            const status = (item && item.status) ? item.status.toLowerCase() : '';
+            return status === 'overbought' || status === 'oversold';
+        });
+
+        // 3. Sort
+        displayData.sort((a, b) => {
+            let valA = a[sortCol];
+            let valB = b[sortCol];
+
+            // Handle numeric vs string
+            // 'status' is string, 'symbol' is string
+            // 'price', 'change_pct', 'rsi', 'stoch' are numbers (or null)
+
+            // Normalize nulls/undefined to always be last or first? 
+            // Let's treat null as -Infinity for numeric desc sort (bottom)
+            
+            if (valA === undefined || valA === null) valA = -999999999;
+            if (valB === undefined || valB === null) valB = -999999999;
+            
+            // Special handling for strings
+            if (typeof valA === 'string') valA = valA.toUpperCase();
+            if (typeof valB === 'string') valB = valB.toUpperCase();
+
+            if (valA < valB) return sortAsc ? -1 : 1;
+            if (valA > valB) return sortAsc ? 1 : -1;
+            return 0;
+        });
+
+        renderTable(displayData);
+        if (rowCountEl) rowCountEl.textContent = displayData.length.toString();
+        updateSortIcons(); // Ensure icons are correct on first load too
+    }
+
+    function setTf(tf) {
+        currentTf = tf;
+        socket.emit('set_timeframe', tf);
+        
+        // Update button states
+        document.querySelectorAll('.tf-btn').forEach(btn => {
+            if(btn.dataset.tf === tf) {
+                btn.className = "tf-btn px-4 py-1.5 text-sm font-medium rounded-md transition-all text-white bg-gray-700 shadow-sm";
+            } else {
+                btn.className = "tf-btn px-4 py-1.5 text-sm font-medium rounded-md transition-all text-gray-400 hover:text-white";
+            }
+        });
+    }
+
+    // Socket Events
+    socket.on('connect', () => {
+        connStatusText.textContent = "Live Stream Active";
+        connStatusDot.className = "w-2 h-2 rounded-full bg-emerald-500";
+        headerDot.className = "relative inline-flex rounded-full h-3 w-3 bg-emerald-500";
+        headerPulse.classList.remove('hidden');
+        const dbg = document.getElementById('debugOverlay');
+        if (dbg) dbg.textContent = 'JS: ok • Socket: connected';
+    });
+
+    socket.on('disconnect', () => {
+        connStatusText.textContent = "Stream Interrupted";
+        connStatusDot.className = "w-2 h-2 rounded-full bg-red-500";
+        headerDot.className = "relative inline-flex rounded-full h-3 w-3 bg-red-500";
+        headerPulse.classList.add('hidden');
+        const dbg = document.getElementById('debugOverlay');
+        if (dbg) dbg.textContent = 'JS: ok • Socket: disconnected';
+    });
+
+    socket.on('timeframe', (tf) => {
+        if(tf && tf !== currentTf) setTf(tf);
+    });
+
+    socket.on("update", (data) => {
+        latestData = data || [];
+        filterAndRender();
+        const dbg = document.getElementById('debugOverlay');
+        if (dbg) dbg.textContent = `JS: ok • Socket: connected • ${latestData.length} rows • filter: ${filterInput.value || '-'} `;
+    });
+
+    function renderTable(data) {
+        if (!data || data.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="6" class="p-12 text-center text-gray-500">No Overbought / Oversold signals yet.</td></tr>`;
+            return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        
+        data.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-white/5 transition-colors group animate-fade-in";
+            
+            // Formatters
+            const price = parseFloat(item.price);
+            const formattedPrice = isNaN(price) ? '---' : price.toLocaleString(undefined, { minimumFractionDigits: price < 1 ? 6 : 2 });
+
+            // Clean symbol for display: remove any ":USDT" suffix and all slashes
+            const rawSymbol = item.symbol || '';
+            const displaySymbol = rawSymbol.replace(/:USDT/gi, '').replace(/\//g, '');
+            const badgeText = displaySymbol ? displaySymbol.substring(0, 3) : '';
+            // Build MEXC perpetual market URL using the base symbol (text before '/' or ':')
+            const base = (rawSymbol.split(/[\/:]/)[0] || '').toUpperCase();
+            const mexcUrl = base ? `https://www.mexc.com/en-GB/futures/${base}_USDT` : '#';
+            
+            const change = parseFloat(item.change_pct);
+            let changeClass = "text-gray-400";
+            let changeText = "-";
+            if (!Number.isNaN(change)) {
+                changeText = (change > 0 ? "+" : "") + change + "%";
+                if (change > 0) changeClass = "text-emerald-400 font-medium";
+                else if (change < 0) changeClass = "text-rose-400 font-medium";
+            }
+
+            const volume = parseFloat(item.volume_usdt);
+            const formattedVolume = isNaN(volume) ? '-' : volume.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+            // Status Badge (short labels)
+            let statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-800 text-gray-400 border border-gray-700">--</span>`;
+            if (item.status === 'Overbought') {
+                statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/30">OB</span>`;
+            } else if (item.status === 'Oversold') {
+                statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">OS</span>`;
+            }
+
+            tr.innerHTML = `
+                <td class="p-5 pl-8">
+                    <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-400 ring-1 ring-white/10 group-hover:ring-white/20 transition-all">
+                            <a href="${mexcUrl}" target="_blank" rel="noopener noreferrer" class="block w-full h-full flex items-center justify-center">${badgeText}</a>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="font-bold text-gray-200"><a href="${mexcUrl}" target="_blank" rel="noopener noreferrer" class="hover:underline">${displaySymbol}</a></span>
+                            <span class="text-[9px] font-semibold text-emerald-500/80 tracking-wide">MEXC PERP</span>
+                        </div>
+                    </div>
+                </td>
+                <td class="p-5 font-mono text-gray-300 tracking-tight">${formattedPrice}</td>
+                <td class="p-5 font-mono ${changeClass}">${changeText}</td>
+                <td class="p-5 font-mono text-amber-400">${formattedVolume}</td>
+                <td class="p-5 text-gray-300 font-medium">${item.rsi ?? '-'}</td>
+                <td class="p-5">${statusBadge}</td>
+            `;
+            fragment.appendChild(tr);
+        });
+
+        tableBody.innerHTML = '';
+        tableBody.appendChild(fragment);
+        lastUpdateEl.textContent = new Date().toLocaleTimeString();
+    }
+
+    // Manual API fetch UI: prompt user for symbols and call /api/ticker
+    function openApiFetch() {
+        const defaultSymbols = (latestData && latestData.length) ? latestData.slice(0,3).map(d => d.symbol).join(',') : 'BTC/USDT,ETH/USDT';
+        const input = prompt('Enter symbols (comma-separated, e.g. BTC/USDT,ETH/USDT):', defaultSymbols);
+        if (!input) return;
+        fetchTickers(input.trim());
+    }
+
+    async function fetchTickers(symbols) {
+        try {
+            const url = `/api/ticker?symbols=${encodeURIComponent(symbols)}&timeframe=${encodeURIComponent(currentTf)}`;
+            const res = await fetch(url, { cache: 'no-store' });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert('API error: ' + (err.error || res.statusText));
+                return;
+            }
+            const data = await res.json();
+            latestData = Array.isArray(data) ? data : [];
+            filterAndRender();
+            showToast();
+            const dbg = document.getElementById('debugOverlay');
+            if (dbg) dbg.textContent = `JS: ok • API fetch • ${latestData.length} rows`;
+        } catch (e) {
+            alert('Fetch failed: ' + e.message);
+        }
+    }
+
+    function showToast() {
+        const toast = document.getElementById('toast');
+        toast.classList.remove('translate-y-20', 'opacity-0');
+        setTimeout(() => {
+            toast.classList.add('translate-y-20', 'opacity-0');
+        }, 2000);
+    }
+
+    // Initial load
+    tableBody.innerHTML = `<tr><td colspan="7" class="p-12 text-center text-gray-500 animate-pulse">Connecting to data stream...</td></tr>`;
+</script>
+</body>
+</html>

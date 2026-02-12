@@ -1,0 +1,29 @@
+{
+  "manual": [
+    "BTC/USDT",
+    "ETH/USDT",
+    "RIVER/USDT"
+  ],
+  "results": {
+    "BTC/USDT": {
+      "exists": true,
+      "reasons": [
+        "candidates:BTC/USDT:USDT,PUMPBTC/USDT:USDT"
+      ]
+    },
+    "ETH/USDT": {
+      "exists": true,
+      "reasons": [
+        "candidates:ETH/USDT:USDT,ETHFI/USDT:USDT,ETHW/USDT:USDT"
+      ]
+    },
+    "RIVER/USDT": {
+      "exists": true,
+      "reasons": [
+        "candidates:RIVER/USDT:USDT"
+      ]
+    }
+  },
+  "perp_count": 749,
+  "spot_count": 2284
+}

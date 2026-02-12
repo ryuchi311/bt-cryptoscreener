@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Crypto Screener</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- DaisyUI + Tailwind -->
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Flowbite (Optional components) -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="bg-base-200 min-h-screen text-base-content selection:bg-primary selection:text-primary-content">
+
+    
+
+    <!-- Navbar -->
+    <div class="navbar bg-neutral text-neutral-content shadow-lg mb-8 sticky top-0 z-50">
+        <div class="navbar-start">
+            <div class="dropdown">
+                <div tabindex="0" role="button" class="btn btn-ghost lg:hidden">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16" /></svg>
+                </div>
+                <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52 text-base-content">
+                    <li><a onclick="openApiFetch()">Manual Fetch</a></li>
+                </ul>
+            </div>
+            <a class="btn btn-ghost text-xl font-bold tracking-tight">
+                Crypto<span class="text-success">Screener</span>
+            </a>
+            <div class="hidden lg:flex items-center gap-2 ml-4">
+                <!-- Buttons removed -->
+            </div>
+        </div>
+
+        <div class="navbar-center hidden lg:flex">
+             <div class="join">
+                <input class="input input-sm input-bordered join-item text-base-content" id="filterInput" placeholder="Filter symbols..."/>
+                <button class="btn btn-sm btn-outline join-item text-neutral-content" onclick="openApiFetch()">Fetch New</button>
+             </div>
+        </div>
+
+        <div class="navbar-end gap-2">
+            <!-- Theme Controller -->
+            <div class="dropdown dropdown-end">
+                <div tabindex="0" role="button" class="btn btn-ghost btn-circle">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
+                </div>
+                <ul tabindex="0" class="mt-3 z-[1] p-2 shadow menu menu-sm dropdown-content bg-base-100 rounded-box w-52 text-base-content">
+                    <li><a onclick="setTheme('dark')">Dark</a></li>
+                    <li><a onclick="setTheme('light')">Light</a></li>
+                    <li><a onclick="setTheme('cupcake')">Cupcake</a></li>
+                    <li><a onclick="setTheme('cyberpunk')">Cyberpunk</a></li>
+                    <li><a onclick="setTheme('synthwave')">Synthwave</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-4 max-w-7xl space-y-6">
+        
+        <!-- Controls & Stats Row -->
+        <div class="flex flex-col md:flex-row gap-4 items-start justify-between">
+            <!-- Timeframe Tabs -->
+            <div role="tablist" class="tabs tabs-boxed">
+                <a role="tab" class="tab tf-btn hover:text-primary-content" data-tf="30m" onclick="setTf('30m')">30m</a>
+                <a role="tab" class="tab tf-btn tab-active" data-tf="1h" onclick="setTf('1h')">1h</a>
+                <a role="tab" class="tab tf-btn hover:text-primary-content" data-tf="4h" onclick="setTf('4h')">4h</a>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats shadow bg-base-100 w-full md:w-auto overflow-hidden">
+                <div class="stat py-2">
+                    <div class="stat-figure text-secondary">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                    <div class="stat-title">Signals</div>
+                    <div class="stat-value text-2xl" id="rowCount">0</div>
+                    <div class="stat-desc">Overbought / Oversold</div>
+                </div>
+                <div class="stat py-2 hidden sm:block">
+                    <div class="stat-title">Updated</div>
+                    <div class="stat-value text-lg font-mono" id="lastUpdate">--:--</div>
+                    <div class="stat-desc" id="connStatusText">Connecting...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Presets Bar -->
+         <div class="hidden">
+            <div id="presetsContainer"></div>
+         </div>
+
+        <!-- Main Table -->
+        <div class="card bg-base-100 shadow-xl overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="table table-zebra table-pin-rows">
+                    <!-- head -->
+                    <thead>
+                        <tr class="bg-base-200">
+                            <th class="cursor-pointer hover:bg-base-300 transition-colors" onclick="handleSort('symbol')">Symbol <span class="sort-icon invisible badge badge-xs badge-ghost">↕</span></th>
+                            <th class="cursor-pointer hover:bg-base-300 transition-colors" onclick="handleSort('price')">Price <span class="sort-icon invisible badge badge-xs badge-ghost">↕</span></th>
+                            <th class="cursor-pointer hover:bg-base-300 transition-colors" onclick="handleSort('change_pct')">24h % <span class="sort-icon invisible badge badge-xs badge-ghost">↕</span></th>
+                            <th class="cursor-pointer hover:bg-base-300 transition-colors" onclick="handleSort('volume_usdt')">Vol (USDT) <span class="sort-icon invisible badge badge-xs badge-ghost">↕</span></th>
+                            <th class="cursor-pointer hover:bg-base-300 transition-colors" onclick="handleSort('rsi')">RSI <span class="sort-icon invisible badge badge-xs badge-ghost">↕</span></th>
+                            <th class="cursor-pointer hover:bg-base-300 transition-colors" onclick="handleSort('status')">Status <span class="sort-icon invisible badge badge-xs badge-ghost">↕</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="screenerTable">
+                        <!-- rows -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Sponsors / Footer -->
+        <footer class="footer items-center p-4 bg-base-300 text-base-content rounded-box mb-8">
+            <aside class="items-center grid-flow-col">
+              <p>POWERED BY</p>
+            </aside> 
+            <nav class="grid-flow-col gap-4 md:place-self-center md:justify-self-end">
+                <img src="{{ url_for('static', filename='ULTM8X Digitraders.jpg') }}" class="h-8 rounded opacity-70 hover:opacity-100 transition-opacity" alt="ULTM8X">
+                <img src="{{ url_for('static', filename='Brgy Tamago.jpg') }}" class="h-8 rounded opacity-70 hover:opacity-100 transition-opacity" alt="Brgy Tamago">
+                <img src="{{ url_for('static', filename='Alrock Nation.jpg') }}" class="h-8 rounded opacity-70 hover:opacity-100 transition-opacity" alt="Alrock Nation">
+            </nav>
+        </footer>
+
+    </div>
+
+    <!-- Toast -->
+    <div class="toast toast-end opacity-0 transition-opacity duration-300" id="toast">
+        <div class="alert alert-success">
+          <span>Data Updated</span>
+        </div>
+    </div>
+    
+    <!-- Debug Overlay -->
+    <div id="debugOverlay" class="fixed bottom-2 left-2 text-[10px] opacity-50 font-mono pointer-events-none z-50"></div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
+    <script>
+        const socket = io({ transports: ['polling'] });
+        const tableBody = document.getElementById("screenerTable");
+        const lastUpdateEl = document.getElementById("lastUpdate");
+        const headerPulse = document.getElementById("headerPulse");
+        const headerDot = document.getElementById("headerDot");
+        const connStatusText = document.getElementById("connStatusText");
+        const filterInput = document.getElementById("filterInput");
+        const filterInputMobile = document.getElementById("filterInputMobile");
+        const rowCountEl = document.getElementById("rowCount");
+        
+        let currentTf = "1h";
+        let latestData = [];
+        let sortCol = 'rsi'; 
+        let sortAsc = false; 
+
+        // Sync inputs
+        if(filterInput && filterInputMobile) {
+            filterInput.addEventListener('input', (e) => { filterInputMobile.value = e.target.value; filterAndRender(); });
+            filterInputMobile.addEventListener('input', (e) => { filterInput.value = e.target.value; filterAndRender(); });
+        } else if (filterInput) {
+             filterInput.addEventListener('input', filterAndRender);
+        }
+
+        // Logic
+        function handleSort(col) {
+            if (sortCol === col) sortAsc = !sortAsc;
+            else {
+                sortCol = col;
+                sortAsc = true;
+                if (['price', 'change_pct', 'volume_usdt', 'rsi'].includes(col)) sortAsc = false;
+            }
+            updateSortIcons();
+            filterAndRender();
+        }
+
+        function updateSortIcons() {
+            document.querySelectorAll('.sort-icon').forEach(el => {
+                el.classList.add('invisible');
+                el.parentElement.classList.remove('text-primary');
+            });
+            const headers = document.querySelectorAll('th[onclick^="handleSort"]');
+            const map = ['symbol', 'price', 'change_pct', 'volume_usdt', 'rsi', 'status'];
+            const idx = map.indexOf(sortCol);
+            if (idx !== -1 && headers[idx]) {
+                const icon = headers[idx].querySelector('.sort-icon');
+                if (icon) {
+                    icon.textContent = sortAsc ? '↑' : '↓';
+                    icon.classList.remove('invisible');
+                    headers[idx].classList.add('text-primary');
+                }
+            }
+        }
+
+        function filterAndRender() {
+            if (!latestData) return;
+            const term = (filterInput ? filterInput.value : '').trim().toUpperCase();
+            let displayData = [...latestData];
+            
+            if (term) displayData = displayData.filter(item => item.symbol && item.symbol.toUpperCase().includes(term));
+            
+            // Keep Signals
+            displayData = displayData.filter(item => {
+                const s = (item.status || '').toLowerCase();
+                return s === 'overbought' || s === 'oversold';
+            });
+
+            // Sort
+            displayData.sort((a, b) => {
+                let valA = a[sortCol];
+                let valB = b[sortCol];
+                if (valA == null) valA = -999999999;
+                if (valB == null) valB = -999999999;
+                if (typeof valA === 'string') valA = valA.toUpperCase();
+                if (typeof valB === 'string') valB = valB.toUpperCase();
+                return sortAsc ? (valA < valB ? -1 : 1) : (valA > valB ? -1 : 1);
+            });
+
+            renderTable(displayData);
+            if (rowCountEl) rowCountEl.textContent = displayData.length;
+            updateSortIcons();
+        }
+
+        function renderTable(data) {
+            if (!data || data.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-base-content/50 italic">No signals found.</td></tr>`;
+                return;
+            }
+            const frag = document.createDocumentFragment();
+            data.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = "hover";
+                
+                const price = parseFloat(item.price);
+                const fmtPrice = isNaN(price) ? '-' : price.toLocaleString(undefined, { minimumFractionDigits: price<1?6:2 });
+                
+                const change = parseFloat(item.change_pct);
+                let changeCls = "text-base-content/70";
+                if(change > 0) changeCls = "text-success font-semibold";
+                if(change < 0) changeCls = "text-error font-semibold";
+                const fmtChange = isNaN(change) ? '-' : (change>0?'+':'') + change + '%';
+
+                const rawSym = item.symbol || '';
+                const base = rawSym.split(/[\/:]/)[0];
+                const url = `https://www.mexc.com/en-GB/futures/${base}_USDT`;
+                
+                // Status Badge
+                let badge = '<span class="badge badge-ghost badge-sm">Neutral</span>';
+                if(item.status === 'Overbought') badge = '<span class="badge badge-error badge-sm">Overbought</span>';
+                if(item.status === 'Oversold') badge = '<span class="badge badge-success badge-sm">Oversold</span>';
+
+                tr.innerHTML = `
+                    <td>
+                        <div class="flex items-center gap-3">
+                            <div class="avatar placeholder">
+                                <div class="bg-neutral text-neutral-content rounded-full w-8">
+                                    <span class="text-xs">${base.substring(0,3)}</span>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="font-bold"><a href="${url}" target="_blank" class="link link-hover">${base}</a></div>
+                                <div class="text-[10px] opacity-50">USDT</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="font-mono">${fmtPrice}</td>
+                    <td class="font-mono ${changeCls}">${fmtChange}</td>
+                    <td class="font-mono text-warning">${parseFloat(item.volume_usdt||0).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                    <td class="font-bold">${item.rsi ?? '-'}</td>
+                    <td>${badge}</td>
+                `;
+                frag.appendChild(tr);
+            });
+            tableBody.innerHTML = '';
+            tableBody.appendChild(frag);
+            if(lastUpdateEl) lastUpdateEl.textContent = new Date().toLocaleTimeString();
+        }
+
+        // Timeframe
+        function setTf(tf) {
+            currentTf = tf;
+            socket.emit('set_timeframe', tf);
+            document.querySelectorAll('.tab').forEach(t => {
+                if(t.dataset.tf === tf) t.classList.add('tab-active');
+                else t.classList.remove('tab-active');
+            });
+        }
+        
+        // Theme
+        function setTheme(t) {
+            document.documentElement.setAttribute('data-theme', t);
+            localStorage.setItem('theme', t);
+        }
+        // Init theme
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        setTheme(savedTheme);
+
+        // Presets
+        const symbolPresets = ['BTC/USDT','ETH/USDT','SOL/USDT','BNB/USDT','XRP/USDT'];
+        const presetsContainer = document.getElementById('presetsContainer');
+        function renderPresets() {
+            if(!presetsContainer) return;
+            presetsContainer.innerHTML = '';
+            symbolPresets.forEach(p => {
+                const b = document.createElement('button');
+                b.className = 'btn btn-xs btn-outline';
+                b.textContent = p.replace(/\//g,'');
+                b.onclick = () => fetchTickers(p);
+                presetsContainer.appendChild(b);
+            });
+        }
+        function addPresetFromInput() {
+            const inp = document.getElementById('presetInput');
+            if(!inp) return;
+            const parts = inp.value.split(',').map(s=>s.trim()).filter(Boolean);
+            parts.forEach(p => { if(!symbolPresets.includes(p)) symbolPresets.push(p); });
+            inp.value = '';
+            renderPresets();
+        }
+        renderPresets();
+
+        // API
+        function openApiFetch() {
+            const def = (latestData && latestData.length) ? latestData.slice(0,3).map(d=>d.symbol).join(',') : 'BTC/USDT';
+            const input = prompt('Enter symbols:', def);
+            if(input) fetchTickers(input);
+        }
+        async function fetchTickers(s) {
+            try {
+                const res = await fetch(`/api/ticker?symbols=${encodeURIComponent(s)}&timeframe=${currentTf}`);
+                const d = await res.json();
+                if(d.error) throw new Error(d.error);
+                latestData = Array.isArray(d) ? d : [];
+                filterAndRender();
+                showToast();
+            } catch(e) { alert(e.message); }
+        }
+
+        function showToast() {
+            const t = document.getElementById('toast');
+            if(t) {
+                t.classList.remove('opacity-0');
+                setTimeout(() => t.classList.add('opacity-0'), 2000);
+            }
+        }
+
+        // Socket
+        socket.on('connect', () => {
+            if(connStatusText) connStatusText.textContent = 'Live';
+            if(headerDot) headerDot.classList.replace('bg-error','bg-success');
+            if(headerPulse) headerPulse.classList.remove('hidden');
+        });
+        socket.on('disconnect', () => {
+            if(connStatusText) connStatusText.textContent = 'Disconnected';
+            if(headerDot) headerDot.classList.replace('bg-success','bg-error');
+            if(headerPulse) headerPulse.classList.add('hidden');
+        });
+        socket.on('update', d => {
+            latestData = d || [];
+            filterAndRender();
+        });
+        socket.on('timeframe', setTf);
+    </script>
+</body>
+</html>
