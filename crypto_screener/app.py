@@ -80,4 +80,5 @@ def handle_set_timeframe(tf):
 
 if __name__ == "__main__":
     socketio.start_background_task(background_screener)
-    socketio.run(app, host="0.0.0.0", port=5000)
+    # Allow Werkzeug for local/container use. In production use a proper WSGI server.
+    socketio.run(app, host="0.0.0.0", port=5000, allow_unsafe_werkzeug=True)
