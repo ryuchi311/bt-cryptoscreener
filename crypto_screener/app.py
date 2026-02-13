@@ -6,7 +6,15 @@ from screener import run_screener, get_symbols_rsi
 current_timeframe = "1h"
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins="*", 
+    async_mode="threading",
+    ping_timeout=60,
+    ping_interval=25,
+    logger=False,
+    engineio_logger=False
+)
 
 # Background update interval in seconds (lower for faster auto-updates)
 # Reduced for snappier UX — ensure caps are lowered to avoid rate limits
